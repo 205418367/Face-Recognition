@@ -11,7 +11,6 @@ import random
 import cv2
 import sklearn
 from sklearn.decomposition import PCA
-from time import 
 from easydict import EasyDict as edict
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src', 'common'))
 import face_preprocess
