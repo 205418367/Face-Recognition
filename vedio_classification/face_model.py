@@ -9,6 +9,7 @@ import numpy as np
 import mxnet as mx
 import cv2
 import sklearn
+from easydict import EasyDict as edict
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src', 'common'))
 import face_preprocess
 import tensorflow as tf
@@ -147,6 +148,7 @@ class FaceModel:
   def get_feature(self, faces):
       for face in faces:
           if face.yaw < 30:
+             prewhiten_face = facenet.prewhiten(face.img_face)
              aligned = np.transpose(face.img_face, (2,0,1))
              input_blob = np.expand_dims(aligned, axis=0)
              data = mx.nd.array(input_blob)
