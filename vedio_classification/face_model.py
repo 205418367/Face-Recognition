@@ -7,7 +7,6 @@ import sys,os,glob,h5py
 import argparse
 import numpy as np
 import mxnet as mx
-import random
 import cv2
 import sklearn
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src', 'common'))
