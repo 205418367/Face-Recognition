@@ -3,9 +3,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from scipy import misc
-import sys
-import os
+import sys,os,glob,h5py
 import argparse
 import numpy as np
 import mxnet as mx
@@ -15,23 +13,22 @@ import sklearn
 from sklearn.decomposition import PCA
 from time import sleep
 from easydict import EasyDict as edict
-from mtcnn_detector import MtcnnDetector
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src', 'common'))
 import face_image
 import face_preprocess
 import tensorflow as tf
 import detect_face
-from scipy import misc
+import math
 
 mtcnn_model_checkpoint = "/home/ubuntu/insightface/deploy/mtcnn-model"
+feats_files ="/home/ubuntu/insightface/video_classification/feats/2.h5"  
+
 class Face:
     def __init__(self):
         self.img_face = None
         self.yaw = None
-
-class Embed:
-    def __init__(self):
-        self.embedding = None
+        self.dist = None
+        self.label = None
 
 def get_model(ctx, image_size, model_str, layer):
     _vec = model_str.split(',')
@@ -47,20 +44,39 @@ def get_model(ctx, image_size, model_str, layer):
     model.set_params(arg_params, aux_params)
     return model
 
+def compute_yuxianDistance(embedding,feats,labels):   
+        dot = np.sum(np.multiply(embedding, feats), axis=1)
+        norm = np.linalg.norm(embedding) * np.linalg.norm(feats, axis=1)
+        similarity = dot / norm
+        dists = np.arccos(similarity) / math.pi
+        idx = np.argsort(dists)[:1]
+        rank_dists = dists[idx]
+        rank_labels = [labels[k] for k in idx]
+        return rank_dists[0],rank_labels[0]
+
 class FaceModel:
   def __init__(self, args):
       self.args = args
       ctx = mx.cpu()
-      _vec = args.image_size.split(',')
-      image_size = (int(_vec[0]), int(_vec[1]))
       self.model = None
-      self.model = get_model(ctx, image_size, args.model, 'fc1')
+      self.model = get_model(ctx, (112,112), args.model, 'fc1')
       self.threshold = args.threshold
       self.minsize = 60
       self.threshold = [0.6,0.7,0.8]
       self.margin = 44
       self.pnet, self.rnet, self.onet = self._setup_mtcnn()
       self.factor = 0.709
+      files = glob.glob(feats_files)
+      self.feats, self.labels = self.load_files(files)
+
+  #载入特征库
+  def load_files(self,files):
+      h5fs = {}
+      for i, f in enumerate(files):
+          h5fs['h5f_' + str(i)] = h5py.File(f,'r')
+      feats = np.concatenate([value['feats'] for key, value in h5fs.items()])
+      labels = np.concatenate([value['lables'] for key, value in h5fs.items()])
+      return feats,labels
 
   def _setup_mtcnn(self):    
       with tf.Graph().as_default():
@@ -94,7 +110,6 @@ class FaceModel:
           else:
                 det_arr.append(np.squeeze(det))
 
-
           for i,det in enumerate(det_arr):         
               face = Face()
               det = np.squeeze(det)
@@ -107,7 +122,7 @@ class FaceModel:
               if nrof_faces == 1:
                  crop = img[bb[1]:bb[3], bb[0]:bb[2],:]
                  _landmark = points[:,0].reshape((2,5)).T
-                 img_face,yaw = face_preprocess.preprocess(crop,det,_landmark,self.image_size)  
+                 img_face,yaw = face_preprocess.preprocess(crop,det,_landmark,"112,112")  
               else:
                  crop = img[bb[1]:bb[3], bb[0]:bb[2],:] 
                  bounding,po = detect_face.detect_face(crop, self.minsize,
@@ -127,31 +142,26 @@ class FaceModel:
                        bindex = np.argmax(bounding_box_size-offset_dist_squared*2.0) 
  
                     _landmark = po[:, bindex].reshape((2,5)).T
-                    img_face,yaw = face_preprocess.preprocess(crop,bounding,_landmark,self.image_size) 
+                    img_face,yaw = face_preprocess.preprocess(crop,bounding,_landmark,"112,112") 
 
               face.img_face = img_face
               face.yaw = yaw
               faces.append(face)
       return faces
 
-  def get_feature(self, aligned):
-      embeds = []
-      embed = Embed()
-      for align in aligned:
-          if align.yaw < 30:
-             aligned = np.transpose(align.img_face, (2,0,1))
+  def get_feature(self, faces):
+      for face in faces:
+          if face.yaw < 30:
+             aligned = np.transpose(face.img_face, (2,0,1))
              input_blob = np.expand_dims(aligned, axis=0)
              data = mx.nd.array(input_blob)
              db = mx.io.DataBatch(data=(data,))
              self.model.forward(db, is_train=False)
              embedding = self.model.get_outputs()[0].asnumpy()
              embedding = sklearn.preprocessing.normalize(embedding).flatten()
-             embed.embedding = embedding
-             embeds.append(embed)
-      if len(embeds) > 0:
-         return embeds
-      else:
-         return None
+             #face.embedding = embedding
+             face.dist,face.label = compute_yuxianDistance(embedding,self.feats,self.labels)
+      return faces
 
   def get_ga(self, aligned):
       input_blob = np.expand_dims(aligned, axis=0)

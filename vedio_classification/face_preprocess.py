@@ -92,7 +92,7 @@ def preprocess(img,bb,landmark,image_size):
      ret = img[bb[1]:bb[3],bb[0]:bb[2],:]
      if len(image_size)>0:
         ret = cv2.resize(ret, (image_size[1], image_size[0]))
-     return ret,None
+     return ret,0
   else: 
      warped = cv2.warpAffine(img,M,(image_size[1],image_size[0]), borderValue = 0.0)
      return warped,yaw

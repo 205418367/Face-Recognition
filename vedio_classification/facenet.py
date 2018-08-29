@@ -20,34 +20,6 @@ import math
 from six import iteritems
 import mxnet as mx
 
-def triplet_loss(anchor, positive, negative, alpha):
-    with tf.variable_scope('triplet_loss'):
-        pos_dist = tf.reduce_sum(tf.square(tf.subtract(anchor, positive)), 1)
-        neg_dist = tf.reduce_sum(tf.square(tf.subtract(anchor, negative)), 1)
-        
-        basic_triple = tf.add(tf.subtract(pos_dist,neg_dist), alpha)
-        triple_loss = tf.reduce_mean(tf.maximum(basic_triple, 0.0), 0)
-
-        basic_regularization = tf.reduce_sum(tf.subtract(np.abs(anchor),1),1)+tf.reduce_sum(tf.subtract(np.abs(anchor),1),1)+tf.reduce_sum(tf.subtract(np.abs(anchor),1),1)
-        regularization_loss = tf.reduce_mean(tf.maximum(basic_regularization, 0.0),0)
-        loss = triple_loss+0.01*regularization_loss
-    return loss
-  
-def center_loss(features, label, alfa, nrof_classes):
-    """Center loss based on the paper "A Discriminative Feature Learning Approach for Deep Face Recognition"
-       (http://ydwen.github.io/papers/WenECCV16.pdf)
-    """
-    nrof_features = features.get_shape()[1]
-    centers = tf.get_variable('centers', [nrof_classes, nrof_features], dtype=tf.float32,
-        initializer=tf.constant_initializer(0), trainable=False)
-    label = tf.reshape(label, [-1])
-    centers_batch = tf.gather(centers, label)
-    diff = (1 - alfa) * (centers_batch - features)
-    centers = tf.scatter_sub(centers, label, diff)
-    with tf.control_dependencies([centers]):
-        loss = tf.reduce_mean(tf.square(features - centers_batch))
-    return loss, centers
-
 def get_image_paths_and_labels(dataset):
     image_paths_flat = []
     labels_flat = []
@@ -112,16 +84,6 @@ def get_control_flag(control, field):
     return tf.equal(tf.mod(tf.floor_div(control, field), 2), 1)
   
 def _add_loss_summaries(total_loss):
-    """Add summaries for losses.
-  
-    Generates moving average for all losses and associated summaries for
-    visualizing the performance of the network.
-  
-    Args:
-      total_loss: Total loss from loss().
-    Returns:
-      loss_averages_op: op for generating moving averages of losses.
-    """
     # Compute the moving average of all individual losses and the total loss.
     loss_averages = tf.train.ExponentialMovingAverage(0.9, name='avg')
     losses = tf.get_collection('losses')
@@ -219,12 +181,10 @@ def load_data(image_paths, do_random_crop, do_random_flip, image_size, do_prewhi
         img = misc.imread(image_paths[i])
         if img.ndim == 2:
             img = to_rgb(img)
+        #图像归一化
         if do_prewhiten:
             img = prewhiten(img)
-        #img = crop(img, do_random_crop, image_size)
-        #img = flip(img, do_random_flip)
-        #tensorflow批量处理数据的关键地方
-        #images[i,:,:,:] = img
+
         aligned = np.transpose(img, (2,0,1))
         input_blob = np.expand_dims(aligned, axis=0)
         data = mx.nd.array(input_blob)
