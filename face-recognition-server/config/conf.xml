@@ -1,0 +1,4 @@
+<config name="config-file">
+  <port>5000</port>
+  <host>0.0.0.0</host>
+</config>
